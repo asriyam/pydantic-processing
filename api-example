@@ -1,0 +1,77 @@
+from pydantic import BaseModel, Field, EmailStr
+from typing import List, Literal, Optional
+from openai import OpenAI
+import instructor
+import anthropic
+from dotenv import load_dotenv
+from datetime import date
+
+class UserInput(BaseModel):
+    name: str
+    email: EmailStr
+    query: str
+    order_id: Optional[int] = Field(
+        None,
+        description="5-digit order number (cannot start with 0)",
+        ge=10000,
+        le=99999
+    )
+    purchase_date: Optional[date] = None
+
+class CustomerQuery(UserInput):
+    priority: str = Field(
+        ..., description="Priority level: low, medium, high"
+    )
+    category: Literal[
+        'refund_request', 'information_request', 'other'
+    ] = Field(..., description="Query category")
+    is_complaint: bool = Field(
+        ..., description="Whether this is a complaint"
+    )
+    tags: List[str] = Field(..., description="Relevant keyword tags")
+
+user_input_json = '''{
+    "name": "Joe User",
+    "email": "joe.user@example.com",
+    "query": "I ordered a new computer monitor and it arrived with the screen cracked. This is the second time this has happened. I need a replacement ASAP.",
+    "order_number": 12345,
+    "purchase_date": "2025-12-31"
+}'''
+
+user_input = UserInput.model_validate_json(user_input_json)
+
+prompt = (
+    f"Analyze the following customer query {user_input} "
+    f"and provide a structured response."
+)
+
+load_dotenv()
+# Use Anthropic with Instructor to get structured output
+client = instructor.from_openai(
+    OpenAI()
+)
+
+"""
+response = client.messages.create(
+    model="gpt-4o",  
+    max_tokens=1024,
+    messages=[
+        {
+            "role": "user", 
+            "content": prompt
+        }
+    ],
+    response_model=CustomerQuery  
+)
+"""
+response = client.beta.chat.completions.parse(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": prompt}],
+    response_format=CustomerQuery
+)
+response_content = response.choices[0].message.content
+print(type(response_content))
+print(response_content)
+
+print(type(response))
+print(response.model_dump_json(indent=2))
